@@ -89,25 +89,48 @@ export const logout = (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { profilePic } = req.body;
-    const userId = req.user._id;
+    const userId = req.user?._id;
 
-    if (!profilePic) {
-      return res.status(400).json({ message: "Profile pic is required" });
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: No user ID found" });
     }
 
-    const uploadResponse = await cloudinary.uploader.upload(profilePic);
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { profilePic: uploadResponse.secure_url },
-      { new: true }
-    );
+    if (!profilePic || !profilePic.startsWith("data:image")) {
+      return res.status(400).json({ message: "Invalid or missing profile picture" });
+    }
 
-    res.status(200).json(updatedUser);
+    try {
+      const uploadResponse = await cloudinary.uploader.upload(profilePic, {
+        folder: "profile_pics",
+      });
+
+      console.log("Cloudinary Upload Response:", uploadResponse);
+
+      if (!uploadResponse.secure_url) {
+        throw new Error("Image upload failed");
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { profilePic: uploadResponse.secure_url },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.status(200).json(updatedUser);
+    } catch (cloudinaryError) {
+      console.error("Cloudinary Upload Error:", cloudinaryError);
+      return res.status(500).json({ message: "Failed to upload image" });
+    }
   } catch (error) {
-    console.log("error in update profile:", error);
+    console.log("Error in update profile:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
 
 export const checkAuth = (req, res) => {
   try {
