@@ -17,7 +17,6 @@ export const useAuthStore = create((set, get) => ({
   checkAuth: async () => {
     try {
       const res = await axiosInstance.get("/auth/check");
-
       set({ authUser: res.data });
       get().connectSocket();
     } catch (error) {
@@ -48,7 +47,6 @@ export const useAuthStore = create((set, get) => ({
       const res = await axiosInstance.post("/auth/login", data);
       set({ authUser: res.data });
       toast.success("Logged in successfully");
-
       get().connectSocket();
     } catch (error) {
       toast.error(error.response.data.message);
@@ -72,15 +70,18 @@ export const useAuthStore = create((set, get) => ({
     set({ isUpdatingProfile: true });
     try {
       const res = await axiosInstance.put("/auth/update-profile", data);
-      set({ authUser: res.data });
+      set((state) => ({
+        authUser: { ...state.authUser, ...res.data }, // Update user state immediately
+      }));
       toast.success("Profile updated successfully");
     } catch (error) {
-      console.log("error in update profile:", error);
-      toast.error(error.response.data.message);
+      console.log("Error in update profile:", error);
+      toast.error(error.response?.data?.message || "Failed to update profile");
     } finally {
       set({ isUpdatingProfile: false });
     }
   },
+  
 
   connectSocket: () => {
     const { authUser } = get();
@@ -91,18 +92,39 @@ export const useAuthStore = create((set, get) => ({
         userId: authUser._id,
       },
     });
-    socket.connect();
 
-    set({ socket: socket });
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Socket disconnected");
+    });
+
+    socket.on("userStatus", (data) => {
+      const { userId, status } = data;
+      get().updateUserStatus(userId, status);
+    });
 
     socket.on("getOnlineUsers", (userIds) => {
       set({ onlineUsers: userIds });
     });
+
+    set({ socket: socket });
   },
+
   disconnectSocket: () => {
-    if (get().socket?.connected) get().socket.disconnect();
+    if (get().socket?.connected) {
+      get().socket.disconnect();
+    }
   },
+
+  setOnlineUsers: (onlineUsers) => set({ onlineUsers }),
+
+  updateUserStatus: (userId, status) => set((state) => {
+    const updatedUsers = state.onlineUsers.map((user) =>
+      user._id === userId ? { ...user, status } : user
+    );
+    return { onlineUsers: updatedUsers };
+  }),
 }));
-
-
-
